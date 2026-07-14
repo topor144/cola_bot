@@ -34,8 +34,18 @@ class GoogleSheetsDatabase:
         
         # Быстрая проверка наличия файла авторизации
         if not os.path.exists(GOOGLE_SHEETS_CREDENTIALS_JSON):
-            logger.error(f"❌ Файл Google Sheets credentials не найден по пути: {GOOGLE_SHEETS_CREDENTIALS_JSON}")
-            raise FileNotFoundError(f"Файл {GOOGLE_SHEETS_CREDENTIALS_JSON} обязателен для запуска бота!")
+            content = os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT")
+            if content:
+                try:
+                    with open(GOOGLE_SHEETS_CREDENTIALS_JSON, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    logger.info("✅ credentials.json успешно воссоздан из переменных окружения!")
+                except Exception as e:
+                    logger.error(f"❌ Не удалось записать credentials.json: {e}")
+                    raise
+            else:
+                logger.error(f"❌ Файл Google Sheets credentials не найден по пути: {GOOGLE_SHEETS_CREDENTIALS_JSON}")
+                raise FileNotFoundError(f"Файл {GOOGLE_SHEETS_CREDENTIALS_JSON} обязателен для запуска бота!")
 
     def _get_service_sync(self):
         """Синхронно инициализирует Google Sheets Service"""
