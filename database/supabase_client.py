@@ -8,6 +8,24 @@ from config import GOOGLE_SHEETS_CREDENTIALS_JSON, GOOGLE_SHEETS_ID
 
 logger = logging.getLogger(__name__)
 
+def parse_float(val) -> float:
+    if not val or val == '-': return 0.0
+    try:
+        if isinstance(val, str):
+            val = val.replace(',', '.').replace(' ', '')
+        return float(val)
+    except ValueError:
+        return 0.0
+
+def parse_int(val) -> int:
+    if not val or val == '-': return 0
+    try:
+        if isinstance(val, str):
+            val = val.replace(' ', '')
+        return int(float(val))
+    except ValueError:
+        return 0
+
 # Scopes для Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
@@ -88,10 +106,10 @@ class GoogleSheetsDatabase:
                 drinks.append({
                     "id": idx + 1,  # В качестве ID используем порядковый номер
                     "name": row[0],
-                    "calories_per_100ml": float(row[1]) if len(row) > 1 and row[1] else 0.0,
-                    "sugar_per_100ml": float(row[2]) if len(row) > 2 and row[2] else 0.0,
-                    "caffeine_per_100ml": float(row[3]) if len(row) > 3 and row[3] else 0.0,
-                    "sodium_per_100ml": float(row[4]) if len(row) > 4 and row[4] else 0.0,
+                    "calories_per_100ml": parse_float(row[1]) if len(row) > 1 else 0.0,
+                    "sugar_per_100ml": parse_float(row[2]) if len(row) > 2 else 0.0,
+                    "caffeine_per_100ml": parse_float(row[3]) if len(row) > 3 else 0.0,
+                    "sodium_per_100ml": parse_float(row[4]) if len(row) > 4 else 0.0,
                     "volume_default": 2000  # Значение по умолчанию
                 })
             
@@ -222,12 +240,12 @@ class GoogleSheetsDatabase:
                     "purchase_date": row[0],
                     "drinks": {"name": row[1]},
                     "drink_id": row[1],
-                    "volume_ml": int(row[2]) if row[2] else 0,
-                    "price_rub": float(row[3]) if len(row) > 3 and row[3] else 0.0,
-                    "calories_total": float(row[4]) if len(row) > 4 and row[4] else 0.0,
-                    "sugar_total": float(row[5]) if len(row) > 5 and row[5] else 0.0,
-                    "caffeine_total": float(row[6]) if len(row) > 6 and row[6] else 0.0,
-                    "sodium_total": float(row[7]) if len(row) > 7 and row[7] else 0.0,
+                    "volume_ml": parse_int(row[2]) if len(row) > 2 else 0,
+                    "price_rub": parse_float(row[3]) if len(row) > 3 else 0.0,
+                    "calories_total": parse_float(row[4]) if len(row) > 4 else 0.0,
+                    "sugar_total": parse_float(row[5]) if len(row) > 5 else 0.0,
+                    "caffeine_total": parse_float(row[6]) if len(row) > 6 else 0.0,
+                    "sodium_total": parse_float(row[7]) if len(row) > 7 else 0.0,
                     "notes": row[8] if len(row) > 8 else ""
                 })
             
