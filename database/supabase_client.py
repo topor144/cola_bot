@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import datetime
 from google.oauth2.service_account import Credentials
-from google.api_python_client import discovery
+from googleapiclient import discovery
 from config import GOOGLE_SHEETS_CREDENTIALS_JSON, GOOGLE_SHEETS_ID
 
 logger = logging.getLogger(__name__)
