@@ -1,6 +1,7 @@
 import re
 import logging
 import requests
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,3 @@ def extract_volume_from_text(text: str) -> int | None:
                 pass
                 
     return None
-
-
-import asyncio  # Добавляем импорт asyncio, так как он используется в perform_ocr
