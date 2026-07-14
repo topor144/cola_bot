@@ -1,0 +1,34 @@
+services:
+  - type: worker
+    name: drink-tracker-bot
+    runtime: python
+    plan: free
+    
+    # Команда для установки зависимостей
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    
+    # Команда для запуска бота
+    startCommand: python main.py
+    
+    # Переменные окружения (заполнить после создания сервиса)
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GOOGLE_SHEETS_CREDENTIALS_JSON
+        sync: false
+      - key: GOOGLE_SHEETS_ID
+        sync: false
+      - key: OWNER_USER_ID
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+    
+    # Python версия
+    pythonVersion: 3.11
+    
+    # Автодеплой при push в main
+    autoDeploy: true
