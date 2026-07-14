@@ -25,3 +25,6 @@ if OWNER_USER_ID == 0:
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# OCR.space
+OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "helloworld")

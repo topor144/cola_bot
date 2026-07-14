@@ -1,11 +1,14 @@
 """Главный файл Telegram бота"""
 
+import os
 import asyncio
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.types import BotCommand, TelegramObject
 from config import TELEGRAM_BOT_TOKEN, OWNER_USER_ID, LOG_LEVEL
-from handlers import start, buy, history, stats, admin
+from handlers import start, buy, history, stats, admin, photo
 
 # Настройка логирования
 logging.basicConfig(
@@ -13,6 +16,51 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# --- Обход ограничений Render (Dummy Web Server) ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Мини-обработчик для ответов на пинги Render"""
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("Бот запущен и работает! 🥤".encode("utf-8"))
+
+    def log_message(self, format, *args):
+        # Подавляем лишние логи пингов от Render
+        pass
+
+
+def run_dummy_server():
+    """Запуск HTTP-сервера для прохождения Health Check на Render"""
+    port = int(os.getenv("PORT", 8080))
+    logger.info(f"🌐 Запускаю Health Check веб-сервер на порту {port}...")
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"❌ Не удалось запустить Health Check сервер: {e}")
+
+
+# --- Инициализация ключей Google из переменных окружения ---
+def setup_credentials():
+    """
+    Если credentials.json отсутствует (например, на сервере Render),
+    создает его из переменной окружения GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT.
+    """
+    credentials_path = "./credentials.json"
+    if not os.path.exists(credentials_path):
+        content = os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT")
+        if content:
+            try:
+                with open(credentials_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                logger.info("✅ credentials.json успешно воссоздан из переменных окружения!")
+            except Exception as e:
+                logger.error(f"❌ Не удалось записать credentials.json: {e}")
+        else:
+            logger.warning("⚠️ Файл credentials.json отсутствует и переменная GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT не задана.")
 
 
 class OwnerOnlyMiddleware(BaseMiddleware):
@@ -28,7 +76,6 @@ class OwnerOnlyMiddleware(BaseMiddleware):
             
         logger.warning(f"🔒 Несанкционированный доступ от пользователя {user.id if user else 'Unknown'}")
         
-        # Если событие поддерживает ответ (сообщение или кнопка)
         if isinstance(event, types.Message):
             await event.answer("❌ Этот бот является приватным и доступен только его владельцу.")
         elif isinstance(event, types.CallbackQuery):
@@ -54,7 +101,14 @@ async def set_bot_commands(bot: Bot):
 async def main():
     """Главная функция"""
     
-    # Инициализация бота и диспетчера
+    # 1. Готовим файл credentials.json из переменных окружения при необходимости
+    setup_credentials()
+    
+    # 2. Запускаем заглушку веб-сервера для Render
+    if os.getenv("PORT") or os.getenv("RENDER"):
+        threading.Thread(target=run_dummy_server, daemon=True).start()
+    
+    # 3. Инициализация бота и диспетчера
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
     
@@ -68,6 +122,7 @@ async def main():
     dp.include_router(history.router)
     dp.include_router(stats.router)
     dp.include_router(admin.router)
+    dp.include_router(photo.router)
     
     logger.info("🚀 Бот запускается...")
     
