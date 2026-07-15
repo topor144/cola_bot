@@ -1,6 +1,6 @@
 # 🥤 Telegram Bot для трекера покупок напитков
 
-Личный Telegram бот для записи покупок напитков с автоматическим расчётом пищевой ценности и синхронизацией с Excel.
+Личный Telegram бот для записи покупок напитков с автоматическим расчётом пищевой ценности и использованием Google Sheets в качестве базы данных.
 
 ## ✨ Возможности
 
@@ -9,9 +9,9 @@
 - ✅ **Автоматический расчёт** пищевой ценности на реальный объём
 - ✅ **История покупок** с фильтрацией по датам
 - ✅ **Статистика** (затраты, потребление, калории)
-- ✅ **Синхронизация** с Google Sheets и Excel
-- ✅ **Бесплатный хостинг** (Render.com / Railway.app)
-- ✅ **Бесплатная база данных** (Supabase)
+- ✅ **Хранение данных** напрямую в Google Sheets
+- ✅ **Распознавание чеков и этикеток** (через OCR.space API)
+- ✅ **Бесплатный хостинг** (Render.com)
 
 ---
 
@@ -33,96 +33,35 @@ cp .env.example .env
 # Telegram (получи от @BotFather в Telegram)
 TELEGRAM_BOT_TOKEN=your_token_here
 
-# Supabase (создай проект на supabase.com)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key-here
-
-# Google Sheets (скачай credentials.json)
+# Google Sheets
+# Если запускаешь локально, используй JSON файл:
 GOOGLE_SHEETS_CREDENTIALS_JSON=./credentials.json
+# Если запускаешь на сервере, скопируй всё содержимое JSON файла в эту переменную:
+GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT={"type": "service_account", ...}
 GOOGLE_SHEETS_ID=your-sheet-id
+
+# Webhook (Обязательно для защиты от сна на Render)
+WEBHOOK_URL=https://your-app-name.onrender.com
+
+# OCR (Для распознавания картинок)
+OCR_API_KEY=your_ocr_key
 
 # Твой Telegram ID (узнай у @userinfobot)
 OWNER_USER_ID=123456789
 ```
 
-### 3. Создание Telegram бота
+### 3. Настройка Google Sheets
 
-1. Напиши @BotFather в Telegram
-2. Выполни `/newbot`
-3. Введи имя бота и username
-4. Скопируй токен в `.env` как `TELEGRAM_BOT_TOKEN`
+1. Создай Google Cloud проект и включи Google Sheets API и Google Drive API.
+2. Создай Service Account и скачай JSON ключ (это твой `credentials.json`).
+3. Создай таблицу Google Sheets и предоставь доступ (Editor) email-адресу твоего Service Account.
+4. Скопируй ID таблицы (из URL) в `GOOGLE_SHEETS_ID`.
+5. В таблице создай три листа: `Напитки`, `Покупки`, `Логи_Синхронизации`. Заголовки можно не указывать, бот создаст их при первом бэкапе или добавлении напитка.
 
-### 4. Создание Supabase проекта
-
-1. Перейди на [supabase.com](https://supabase.com)
-2. Создай новый проект
-3. Скопируй URL и API ключ в `.env`
-4. Запусти SQL скрипты из раздела "Инициализация БД" ниже
-
-### 5. Google Sheets интеграция (опционально)
-
-1. Создай Google Cloud проект
-2. Включи Sheets API
-3. Создай Service Account
-4. Скачай JSON ключ как `credentials.json`
-5. Создай Google Sheet и скопируй его ID в `.env`
-
-### 6. Запуск локально
+### 4. Запуск локально
 
 ```bash
 python main.py
-```
-
----
-
-## 🗄️ Инициализация БД
-
-Запусти эти SQL команды в Supabase SQL editor:
-
-```sql
--- Таблица напитков
-CREATE TABLE drinks (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL UNIQUE,
-  user_id BIGINT NOT NULL,
-  calories_per_100ml DECIMAL(5,2),
-  sugar_per_100ml DECIMAL(5,2),
-  caffeine_per_100ml DECIMAL(5,2),
-  sodium_per_100ml DECIMAL(5,2),
-  volume_default INT DEFAULT 2000,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Таблица покупок
-CREATE TABLE purchases (
-  id SERIAL PRIMARY KEY,
-  drink_id INT REFERENCES drinks(id),
-  user_id BIGINT NOT NULL,
-  purchase_date DATE NOT NULL,
-  volume_ml INT NOT NULL,
-  price_rub DECIMAL(10,2),
-  calories_total DECIMAL(8,2),
-  sugar_total DECIMAL(8,2),
-  caffeine_total DECIMAL(8,2),
-  sodium_total DECIMAL(8,2),
-  notes VARCHAR(500),
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Таблица логов синхронизации
-CREATE TABLE sync_logs (
-  id SERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL,
-  sync_date TIMESTAMP DEFAULT NOW(),
-  status VARCHAR(50),
-  message TEXT
-);
-
--- Индексы для оптимизации
-CREATE INDEX idx_drinks_user_id ON drinks(user_id);
-CREATE INDEX idx_purchases_user_id ON purchases(user_id);
-CREATE INDEX idx_purchases_date ON purchases(purchase_date);
-CREATE INDEX idx_sync_logs_user ON sync_logs(user_id);
 ```
 
 ---
@@ -131,46 +70,19 @@ CREATE INDEX idx_sync_logs_user ON sync_logs(user_id);
 
 ### Подготовка
 
-1. Залей код на GitHub:
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/your-username/drink-tracker-bot.git
-git push -u origin main
-```
+1. Залей код на GitHub.
+2. Создай `render.yaml` (конфигурация) или настрой Web Service вручную.
 
-2. Создай `render.yaml` (конфигурация):
-
-```yaml
-services:
-  - type: web
-    name: drink-tracker-bot
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    envVars:
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
-      - key: OWNER_USER_ID
-        sync: false
-```
-
-### Развёртывание
+### Настройка Web Service на Render
 
 1. Перейди на [render.com](https://render.com)
 2. Подключи GitHub аккаунт
 3. Нажми "New +" → "Web Service"
 4. Выбери репозиторий
-5. Установи переменные окружения из `.env`
+5. Установи переменные окружения из `.env` (включая `WEBHOOK_URL` и `GOOGLE_SHEETS_CREDENTIALS_JSON_CONTENT`)
 6. Нажми "Deploy"
 
-**Бот будет работать 24/7 на бесплатном плане!**
+**Бот будет работать 24/7 на бесплатном плане, моментально просыпаясь через Webhooks!**
 
 ---
 
@@ -191,7 +103,7 @@ services:
 
 ```
 drink_tracker_bot/
-├── main.py                          # Точка входа
+├── main.py                          # Точка входа (Aiohttp сервер для Webhooks)
 ├── config.py                        # Конфиг и переменные
 ├── requirements.txt                 # Зависимости
 ├── .env.example                     # Пример .env
@@ -201,87 +113,27 @@ drink_tracker_bot/
 │   ├── buy.py          # /buy, запись покупок
 │   ├── history.py      # /history, история
 │   ├── stats.py        # /stats, статистика
-│   └── admin.py        # /admin, управление
+│   ├── admin.py        # /admin, управление
+│   └── photo.py        # Обработка фотографий (OCR)
 │
 ├── database/
-│   ├── supabase_client.py           # Работа с БД
-│   └── queries.py                   # SQL запросы
-│
-├── sheets/
-│   └── sync.py         # Синхронизация Google Sheets
+│   └── supabase_client.py           # Работа с Google Sheets (название сохранено для совместимости)
 │
 └── utils/
     ├── calculations.py              # Расчёты
     ├── validators.py                # Валидация
-    └── formatters.py                # Форматирование
+    ├── formatters.py                # Форматирование
+    └── ocr_parser.py                # Парсинг текста с изображений
 ```
-
----
-
-## 🛠️ Возможные проблемы
-
-### ❌ "TELEGRAM_BOT_TOKEN не установлен"
-**Решение:** Добавь токен в `.env` файл
-
-### ❌ "Ошибка подключения к Supabase"
-**Решение:** Проверь URL и ключ в `.env`, убедись что таблицы созданы
-
-### ❌ "Синхронизация не работает"
-**Решение:** 
-1. Проверь `credentials.json` файл
-2. Убедись что Service Account имеет доступ к Sheet
-3. Проверь логи: `tail -f logs/sync.log`
-
-### ❌ "Бот не отвечает"
-**Решение:**
-```bash
-# Проверь логи
-tail -f logs/bot.log
-
-# Перезагрузи бот
-pkill -f "python main.py"
-python main.py
-```
-
----
-
-## 📈 Примеры использования
-
-### Добавить напиток
-```
-/admin → ➕ Добавить напиток
-Название: Любимая COLA
-Калории на 100мл: 18
-Сахар: 4.6
-Кофеин: 34
-Натрий: 30
-```
-
-### Записать покупку
-```
-/buy → Выбрать напиток → Выбрать объём → Ввести цену
-```
-
-### Посмотреть статистику
-```
-/stats → Выбрать период (7 дней, месяц, квартал)
-```
-
----
-
-## 📄 Лицензия
-
-MIT License - используй как хочешь!
 
 ---
 
 ## 💬 Поддержка
 
 Если что-то не работает:
-1. Проверь логи
-2. Убедись что все переменные в `.env` установлены
-3. Проверь интернет соединение
-4. Перезагрузи приложение
+1. Проверь логи на Render
+2. Убедись что Service Account добавлен в Google Sheet с правами редактора
+3. Убедись что `WEBHOOK_URL` указан правильно (без слэша на конце)
 
 ---
 
