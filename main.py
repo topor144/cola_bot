@@ -117,6 +117,19 @@ async def health_check(request):
     return web.Response(text="Бот запущен и работает! 🥤")
 
 
+async def self_ping(url: str):
+    """Фоновая задача, которая пингует собственный сервер каждые 10 минут (защита от сна Render)"""
+    import aiohttp
+    logger.info(f"🔄 Self-ping запущен для URL: {url}")
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 минут
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    logger.debug(f"💓 Self-ping статус: {response.status}")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка self-ping: {e}")
+
 async def main():
     """Главная функция"""
     
@@ -170,6 +183,10 @@ async def main():
             
             logger.info(f"🌐 Запускаю Webhook сервер на порту {port}...")
             await site.start()
+            
+            # Запускаем фоновый пинг
+            base_url = webhook_url.rstrip('/') + '/'
+            asyncio.create_task(self_ping(base_url))
             
             # Бесконечный цикл для работы сервера
             await asyncio.Event().wait()

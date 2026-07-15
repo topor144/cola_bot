@@ -32,7 +32,53 @@ async def photo_handler(message: Message, state: FSMContext):
         await bot.download_file(file_info.file_path, file_data)
         image_bytes = file_data.getvalue()
         
-        # 3. Вызываем API OCR.space
+        # 3. Поиск штрихкода (Barcode)
+        try:
+            import zxingcpp
+            from PIL import Image
+            
+            img = Image.open(BytesIO(image_bytes))
+            barcodes = zxingcpp.read_barcodes(img)
+            
+            if barcodes:
+                barcode = barcodes[0].text
+                await status_msg.edit_text(f"🔍 Найден штрихкод: {barcode}. Ищем в глобальной базе...")
+                
+                from utils.openfoodfacts import get_product_by_barcode
+                product = await get_product_by_barcode(barcode)
+                
+                if product:
+                    await status_msg.delete()
+                    
+                    # Сохраняем во временное состояние для добавления в БД
+                    await state.update_data(off_product=product)
+                    
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="✅ Добавить в мой каталог", callback_data="ocr_add_off")],
+                        [InlineKeyboardButton(text="❌ Отмена", callback_data="ocr_cancel")]
+                    ])
+                    
+                    text = (
+                        f"🌍 **Open Food Facts API**\n\n"
+                        f"По штрихкоду найден напиток:\n"
+                        f"🥤 **{product['name']}**\n\n"
+                        f"Пищевая ценность (на 100мл):\n"
+                        f"🔥 Калории: {product['calories']} ккал\n"
+                        f"🍬 Сахар: {product['sugar']} г\n"
+                        f"☕ Кофеин: {product['caffeine']} мг\n"
+                        f"🧂 Натрий: {product['sodium']} мг\n\n"
+                        f"Добавить этот напиток в ваш справочник?"
+                    )
+                    await message.answer(text, reply_markup=kb)
+                    await state.set_state(OcrState.confirming_drink)
+                    return
+                else:
+                    await status_msg.edit_text("⚠️ Напиток по штрихкоду не найден. Пробую распознать текст...")
+        except Exception as e:
+            logger.warning(f"Ошибка при поиске штрихкода: {e}")
+            await status_msg.edit_text("⚠️ Ошибка сканирования штрихкода. Пробую распознать текст...")
+        
+        # 4. Вызываем API OCR.space (Fallback)
         from utils.ocr_parser import perform_ocr, match_drinks_in_text, extract_volume_from_text
         from config import OCR_SPACE_API_KEY
         
@@ -40,7 +86,7 @@ async def photo_handler(message: Message, state: FSMContext):
         ocr_text = await perform_ocr(image_bytes, api_key=OCR_SPACE_API_KEY)
         
         if not ocr_text:
-            await status_msg.edit_text("❌ OCR.space не вернул распознанный текст. Убедитесь, что текст на фото четкий и читаемый.")
+            await status_msg.edit_text("❌ Текст и штрихкоды не найдены на фото. Убедитесь, что фото четкое.")
             return
             
         # 4. Сопоставляем текст с каталогом напитков и ищем объем
@@ -115,6 +161,51 @@ async def photo_handler(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Ошибка в обработчике фото: {e}")
         await message.answer(f"❌ Произошла ошибка при обработке изображения: {e}")
+        await state.clear()
+
+
+@router.callback_query(OcrState.confirming_drink, F.data == "ocr_add_off")
+async def add_off_drink_cb(callback: CallbackQuery, state: FSMContext):
+    """Добавление напитка из Open Food Facts в базу"""
+    data = await state.get_data()
+    product = data.get("off_product")
+    user_id = callback.from_user.id
+    
+    if not product:
+        await callback.answer("❌ Ошибка: данные утеряны")
+        return
+        
+    try:
+        # Добавляем в базу
+        new_drink = await db.add_drink(
+            name=product['name'],
+            user_id=user_id,
+            calories=product['calories'],
+            sugar=product['sugar'],
+            caffeine=product['caffeine'],
+            sodium=product['sodium']
+        )
+        
+        # Переводим в состояние ввода объема как при обычном распознавании
+        await state.update_data(drink=new_drink)
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="0.5л (500мл)", callback_data="ocr_vol_500")],
+            [InlineKeyboardButton(text="1л (1000мл)", callback_data="ocr_vol_1000")],
+            [InlineKeyboardButton(text="1.5л (1500мл)", callback_data="ocr_vol_1500")],
+            [InlineKeyboardButton(text="2л (2000мл)", callback_data="ocr_vol_2000")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="ocr_cancel")]
+        ])
+        await callback.message.edit_text(
+            f"✅ Напиток **{product['name']}** успешно сохранен в ваш каталог!\n\n"
+            "📦 Выберите объем напитка или введите его числом в чат (в мл), чтобы записать покупку:",
+            reply_markup=kb
+        )
+        await state.set_state(OcrState.entering_volume)
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения напитка из OFF: {e}")
+        await callback.message.edit_text(f"❌ Ошибка сохранения напитка: {e}")
         await state.clear()
 
 

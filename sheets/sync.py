@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 from google.auth.transport.requests import Request
 from google.oauth2.service_account import Credentials
-from google.api_python_client import discovery
+from googleapiclient import discovery
 from config import GOOGLE_SHEETS_CREDENTIALS_JSON, GOOGLE_SHEETS_ID
 from database.supabase_client import db
 
