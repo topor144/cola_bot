@@ -1,0 +1,22 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    # Запускать каждые 10 минут (в 0, 10, 20, 30, 40, 50 минут каждого часа)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Позволяет запускать вручную
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "URL не задан в секретах (WEBHOOK_URL), использую заглушку. Зайдите в Settings -> Secrets -> Actions и добавьте WEBHOOK_URL"
+            exit 0
+          fi
+          echo "Пингую $WEBHOOK_URL..."
+          curl -s -o /dev/null -w "%{http_code}" "$WEBHOOK_URL"
