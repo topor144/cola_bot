@@ -147,5 +147,4 @@ async def stats_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     
     from handlers.start import get_main_keyboard
-    await callback.message.delete()
-    await callback.message.answer("↩️ Вернулись в основное меню", reply_markup=get_main_keyboard())
+    await callback.message.edit_text("👋 Главное меню", reply_markup=get_main_keyboard())

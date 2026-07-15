@@ -5,8 +5,10 @@ import asyncio
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.types import BotCommand, TelegramObject
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from config import TELEGRAM_BOT_TOKEN, OWNER_USER_ID, LOG_LEVEL
 from handlers import start, buy, history, stats, admin, photo
 
@@ -98,17 +100,30 @@ async def set_bot_commands(bot: Bot):
     logger.info("✅ Команды бота установлены")
 
 
+async def on_startup(bot: Bot):
+    """Действия при старте"""
+    await set_bot_commands(bot)
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if webhook_url:
+        # Устанавливаем webhook в Telegram
+        url = f"{webhook_url.rstrip('/')}/webhook"
+        await bot.set_webhook(url)
+        logger.info(f"🔗 Webhook установлен: {url}")
+    else:
+        await bot.delete_webhook(drop_pending_updates=True)
+
+async def health_check(request):
+    """Ответ на Health Check"""
+    return web.Response(text="Бот запущен и работает! 🥤")
+
+
 async def main():
     """Главная функция"""
     
     # 1. Готовим файл credentials.json из переменных окружения при необходимости
     setup_credentials()
     
-    # 2. Запускаем заглушку веб-сервера для Render
-    if os.getenv("PORT") or os.getenv("RENDER"):
-        threading.Thread(target=run_dummy_server, daemon=True).start()
-    
-    # 3. Инициализация бота и диспетчера
+    # 2. Инициализация бота и диспетчера
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
     
@@ -127,17 +142,46 @@ async def main():
     logger.info("🚀 Бот запускается...")
     
     try:
-        # Установить команды
-        await set_bot_commands(bot)
-        
         # Вывести информацию о боте
         me = await bot.get_me()
         logger.info(f"✅ Бот @{me.username} успешно подключен")
         logger.info(f"📱 Имя: {me.first_name}")
         
-        # Запустить polling
-        logger.info("⏳ Ожидание сообщений...")
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if webhook_url:
+            # --- Запуск через Webhook (aiohttp) ---
+            dp.startup.register(on_startup)
+            
+            app = web.Application()
+            webhook_requests_handler = SimpleRequestHandler(
+                dispatcher=dp,
+                bot=bot,
+            )
+            webhook_requests_handler.register(app, path="/webhook")
+            setup_application(app, dp, bot=bot)
+            
+            # Роут для Health Check от Render
+            app.router.add_get("/", health_check)
+            
+            port = int(os.getenv("PORT", 8080))
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', port)
+            
+            logger.info(f"🌐 Запускаю Webhook сервер на порту {port}...")
+            await site.start()
+            
+            # Бесконечный цикл для работы сервера
+            await asyncio.Event().wait()
+            
+        else:
+            # --- Запуск через Polling (fallback) ---
+            await on_startup(bot)
+            if os.getenv("PORT") or os.getenv("RENDER"):
+                threading.Thread(target=run_dummy_server, daemon=True).start()
+                
+            logger.info("⏳ Ожидание сообщений (Polling)...")
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         
     except Exception as e:
         logger.error(f"❌ Ошибка: {e}")

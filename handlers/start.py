@@ -20,16 +20,16 @@ class DummyState(StatesGroup):
 
 
 def get_main_keyboard():
-    """Основная клавиатура"""
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    """Основная клавиатура (Inline)"""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🛒 Новая покупка")],
-            [KeyboardButton(text="📋 История"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="⚙️ Администратор")]
-        ],
-        resize_keyboard=True
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🛒 Новая покупка", callback_data="main_buy")],
+            [InlineKeyboardButton(text="📋 История", callback_data="main_history"), 
+             InlineKeyboardButton(text="📊 Статистика", callback_data="main_stats")],
+            [InlineKeyboardButton(text="⚙️ Администратор", callback_data="main_admin")]
+        ]
     )
     return kb
 
@@ -82,7 +82,7 @@ async def admin_command(message: Message, state: FSMContext):
     await admin_menu(message, state)
 
 
-async def admin_menu(message: Message, state: FSMContext):
+async def admin_menu(source, state: FSMContext):
     """Меню администратора"""
     await state.clear()
     
@@ -97,47 +97,46 @@ async def admin_menu(message: Message, state: FSMContext):
         ]
     )
     
-    await message.answer("⚙️ Панель администратора", reply_markup=kb)
+    if hasattr(source, 'message'):
+        await source.message.edit_text("⚙️ Панель администратора", reply_markup=kb)
+    else:
+        await source.answer("⚙️ Панель администратора", reply_markup=kb)
 
 
-@router.message(F.text == "⚙️ Администратор")
-async def admin_button(message: Message, state: FSMContext):
+@router.callback_query(F.data == "main_admin")
+async def admin_button(callback: CallbackQuery, state: FSMContext):
     """Кнопка администратора"""
-    user_id = message.from_user.id
-    
+    user_id = callback.from_user.id
     if user_id != OWNER_USER_ID:
-        await message.answer("❌ У тебя нет прав")
+        await callback.answer("❌ У тебя нет прав", show_alert=True)
         return
-    
-    await admin_menu(message, state)
+    await admin_menu(callback, state)
 
 
-@router.message(F.text == "🛒 Новая покупка")
-async def buy_button(message: Message, state: FSMContext):
+@router.callback_query(F.data == "main_buy")
+async def buy_button(callback: CallbackQuery, state: FSMContext):
     """Кнопка новая покупка"""
     from handlers.buy import start_buy
-    await start_buy(message, state)
+    await start_buy(callback, state)
 
 
-@router.message(F.text == "📋 История")
-async def history_button(message: Message, state: FSMContext):
+@router.callback_query(F.data == "main_history")
+async def history_button(callback: CallbackQuery, state: FSMContext):
     """Кнопка история"""
     from handlers.history import show_history
-    await show_history(message, state)
+    await show_history(callback, state)
 
 
-@router.message(F.text == "📊 Статистика")
-async def stats_button(message: Message, state: FSMContext):
+@router.callback_query(F.data == "main_stats")
+async def stats_button(callback: CallbackQuery, state: FSMContext):
     """Кнопка статистика"""
     from handlers.stats import show_stats
-    await show_stats(message, state)
+    await show_stats(callback, state)
 
 
 @router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Возврат из админ меню"""
     await state.clear()
-    await callback.message.delete()
-    
-    welcome_text = "👋 Вернулись в основное меню"
-    await callback.message.answer(welcome_text, reply_markup=get_main_keyboard())
+    welcome_text = "👋 Главное меню"
+    await callback.message.edit_text(welcome_text, reply_markup=get_main_keyboard())

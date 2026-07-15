@@ -28,15 +28,19 @@ async def buy_command(message: Message, state: FSMContext):
     await start_buy(message, state)
 
 
-async def start_buy(message: Message, state: FSMContext):
+async def start_buy(source, state: FSMContext):
     """Начать процесс покупки"""
-    user_id = message.from_user.id
+    user_id = source.from_user.id
     
     # Получить напитки пользователя
     drinks = await db.get_all_drinks(user_id)
     
     if not drinks:
-        await message.answer("❌ Добавь напитки сначала через /admin")
+        text = "❌ Добавь напитки сначала через /admin"
+        if hasattr(source, 'message'):
+            await source.message.edit_text(text)
+        else:
+            await source.answer(text)
         return
     
     # Создать inline клавиатуру с напитками
@@ -44,10 +48,15 @@ async def start_buy(message: Message, state: FSMContext):
         inline_keyboard=[
             [InlineKeyboardButton(text=f"🥤 {drink['name']}", callback_data=f"buy_drink_{drink['id']}")]
             for drink in drinks
-        ]
+        ] + [[InlineKeyboardButton(text="↩️ Отмена", callback_data="buy_cancel")]]
     )
     
-    await message.answer("🛒 Какой напиток ты купил?", reply_markup=kb)
+    text = "🛒 Какой напиток ты купил?"
+    if hasattr(source, 'message'):
+        await source.message.edit_text(text, reply_markup=kb)
+    else:
+        await source.answer(text, reply_markup=kb)
+        
     await state.set_state(BuyState.choosing_drink)
 
 
@@ -194,9 +203,18 @@ async def enter_price(message: Message, state: FSMContext):
         # Вернуться в основное меню
         await state.clear()
         from handlers.start import get_main_keyboard
-        await message.answer("Что дальше?", reply_markup=get_main_keyboard())
+        await message.answer("✅ Покупка сохранена! Что дальше?", reply_markup=get_main_keyboard())
         
     except Exception as e:
         logger.error(f"❌ Ошибка при сохранении покупки: {e}")
         await message.answer(f"❌ Ошибка при сохранении: {str(e)}")
         await state.clear()
+
+
+@router.callback_query(F.data == "buy_cancel")
+async def buy_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена покупки и возврат в меню"""
+    await state.clear()
+    from handlers.start import get_main_keyboard
+    await callback.message.edit_text("👋 Главное меню", reply_markup=get_main_keyboard())
+
